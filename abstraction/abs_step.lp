@@ -34,9 +34,9 @@ edge((N,N2),L) :- edge((N2,N ),L), level(L).
 
 % Optimization:
 #heuristic clique(N,         L). [4,false]
-#heuristic clique(N,N2,      L). [3,false]
-#heuristic clique(N,N2,N3,   L). [2,false]
-#heuristic clique(N,N2,N3,N4,L). [1,false]
+%#heuristic clique(N,N2,      L). [3,false]
+%#heuristic clique(N,N2,N3,   L). [2,false]
+%#heuristic clique(N,N2,N3,N4,L). [1,false]
 
 #show node/2. #show edge/2.
 #show node/3.
