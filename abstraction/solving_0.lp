@@ -1,44 +1,70 @@
-time(0..horizon).
-level(level).
+% input
+robot(R)                     :- init(object(robot,R),          _).
+shelf(S)                     :- init(object(shelf,S),          _).
+station(P)                   :- init(object(pickingStation,P), _).
+product(A)                   :- init(object(product,A),        _).
 
-% Starting positions:
-at(R,C2,0,0) :- init(object(robot,R),value(at,(X,Y))), node(C,X,Y), n_is_in_c(C2,C,0).
+    isRobot(robot(R)) :- robot(R).
+    isShelf(shelf(S)) :- shelf(S).
+isStation(station(T)) :- station(T).
+isProduct(product(A)) :- product(A).
+    isOrder(order(O)) :- order(O).
 
-% New positions on highest level:
-1{at(R,C2,L,T+1) : edge((C,C2),L); at(R,C,L,T+1)}1 :- at(R,C,L,T), level(L), time(T+1).
+  order(      O            ) :- init(object(order,O),          _).
+ordered(order(O),product(A)) :- init(object(order,O),          value(line,(A,_))).      % IGNORING QUANTITIES
+ target(order(O),station(P)) :- init(object(order,O),          value(pickingStation,P)).
 
-% Not on a position the robot wasn't on on the level above
-:- at(R,C,L,_), not at(R,C2,L+1,_), n_is_in_c(C,C2,L+1).
+shelved(shelf(S),product(A)) :- init(object(product,A),        value(on,(S,_))).        % IGNORING QUANTITIES
 
-% Keep order of higher levels:
-%:- at(R,N,0,T), at(R,N2,0,T2), at(R,C,1,T3), at(R,C2,1,T4), c_is_in_c(C,N,1), c_is_in_c(C2,N2,1), T>T2, T3<T4.
+position(           (X,Y))   :- init(object(node,_),           value(at,(X,Y))).
 
-% Robot cannot be at more than one position per timestep:
-:- at(R,N,0,T), at(R,N2,0,T), N!=N2.
+position(station(P),(X,Y))   :- init(object(pickingStation,P), value(at,(X,Y))).
 
-% Goal:
-goal(N) :- init(object(order,O),value(line,(A,_))), init(object(product,A),value(on,(S,_))), init(object(shelf,S),value(at,(X,Y))), node(N,X,Y).
-at_goal(N,0) :- goal(N), n_is_in_c(C,N,0), at(R,C,0,horizon), init(object(robot,R),_).
-%at_goal(N,0) :- goal(N), n_is_in_c(C,N,0), at(R,C,0,_), init(object(robot,R),_).
-:- goal(N), not at_goal(N,0).
+position(  robot(R),(X,Y),0) :- init(object(robot,R),          value(at,(X,Y))).
+position(  shelf(S),(X,Y),0) :- init(object(shelf,S),          value(at,(X,Y))).
 
-% Vertex collision:
-:- { at(R,C,0,T) : init(object(robot,R),_) }  > 1, node(C,0), time(T).
+highway(            C    )   :- init(object(highway,_),        value(at,C)).
+
+% Move actions
+time(1..horizon).
+
+direction((X,Y)) :- X=-1..1, Y=-1..1, |X|+|Y|=1..2.
+
+nextto((X,Y),(DX,DY),(X',Y')) :- direction((DX,DY)), position((X,Y)), position((X',Y')),
+                                 (X,Y)=(X'-DX,Y'-DY), (X',Y')=(X+DX,Y+DY).
+
+{ move(R,D,T) : direction(D) } 1 :- isRobot(R), time(T).
+
+% - move/3 ----------------------------------------------------------------------
+position(R,C,T) :- move(R,D,T), position(R,C',T-1),     nextto(C',D,C).
+                :- move(R,D,T), position(R,C ,T-1), not nextto(C ,D,_).
+
+% - inertia ---------------------------------------------------------------------
+position(R,C,T) :- position(R,C,T-1), not move(R,_,T), isRobot(R), time(T).
+
+% - edge collision --------------------------------------------------------------
+moveto(C',C,T) :- nextto(C',D,C), position(R,C',T-1), move(R,D,T).
+ :- moveto(C',C,T), moveto(C,C',T), C < C'.
  
-% Edge collision:
-:- at(R,C,0,T), at(R2,C2,0,T), at(R,C2,0,T+1), at(R2,C,0,T+1), time(T).
+% - crossing collision ------------------------------------------------------------
+ :- moveto((X,Y),(X+1,Y+1),T), moveto((X+1,Y),(X,Y+1),T).
+ :- moveto((X+1,Y+1),(X,Y),T), moveto((X,Y+1),(X+1,Y),T).
+ :- moveto((X,Y),(X+1,Y+1),T), moveto((X,Y+1),(X+1,Y),T).
+ :- moveto((X+1,Y+1),(X,Y),T), moveto((X+1,Y),(X,Y+1),T).
 
-% Crossing collision:
-:- at(R,N,0,T), at(R,N2,0,T+1),  at(R2,N3,0,T),  at(R2,N4,0,T+1), time(T),
-   node(N,X,Y), node(N2,X+1,Y+1), node(N3,X+1,Y), node(N4,X,Y+1).
+% - vertex collision ------------------------------------------------------------
+ :- { position(R,C,T) : isRobot(R) }  > 1, position(C), time(T).
 
-:- at(R,N,0,T),     at(R,N2,0,T+1), at(R2,N3,0,T),  at(R2,N4,0,T+1), time(T),
-   node(N,X+1,Y+1), node(N2,X,Y),    node(N3,X,Y+1), node(N4,X+1,Y).
-   
-:- at(R,N,0,T), at(R,N2,0,T+1), at(R2,N3,0,T),  at(R2,N4,0,T+1), time(T),
-   node(N,X,Y), node(N2,X+1,Y+1),    node(N3,X,Y+1),   node(N4,X+1,Y).
-   
-:- at(R,N,0,T), at(R,N2,0,T+1), at(R2,N3,0,T),  at(R2,N4,0,T+1), time(T),
-   node(N,X+1,Y+1), node(N2,X,Y),    node(N3,X+1,Y),   node(N4,X,Y+1).
+% - auxiliaries -----------------------------------------------------------------
+ :- { position(R,C,T) } != 1, isRobot(R), time(T).    % REDUNDANT but PERFORMANT?
 
-#show at/4.
+% Order fulfillment (Goal condition)
+processed(A,R) :- ordered(O,A), shelved(S,A), isRobot(R), position(S,C,0), position(R,C,horizon).
+processed(A)   :- processed(A,R).
+:- ordered(O,A), not processed(A).
+
+%at(R,C,0,T) :- init(object(node,C),value(at,(X,Y))), position(R,(X,Y),T).
+%:- at(R,C,L,_), not at(R,C2,L+1,_), n_is_in_c(C,C2,L+1).
+
+% Output conversion
+#show position/3.
